@@ -3,12 +3,13 @@
     <a-card class="upload-card" :bordered="false">
       <a-upload-dragger
         name="file"
-        action="/api/upload"
+        action="/api/files/upload"
         :multiple="true"
         @success="handleUploadSuccess"
         @error="handleUploadError"
         :before-upload="beforeUpload"
         :class="{ 'upload-error': uploadStatus === 'error' }"
+        :showUploadList="{ showRemoveIcon: true, showDownloadIcon: false }"
       >
         <p class="ant-upload-drag-icon">
           <inbox-outlined />
@@ -58,7 +59,27 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
+
+// 获取文件列表
+const fetchFileList = async () => {
+  try {
+    const response = await axios.get('/api/files')
+    fileList.value = response.data.map(file => ({
+      id: file.url.split('/').pop(), // 从URL中提取文件ID
+      fileName: file.fileName,
+      fileSize: file.size,
+      uploadTime: new Date().toLocaleString() // 使用当前时间作为默认值
+    }))
+  } catch (error) {
+    message.error('获取文件列表失败')
+  }
+}
+
+// 组件挂载时获取文件列表
+onMounted(() => {
+  fetchFileList()
+})
 import {
   InboxOutlined,
   FolderOutlined,
@@ -102,11 +123,13 @@ const columns = [
 const handleUploadSuccess = (response, file) => {
   uploadStatus.value = 'success'
   message.success('文件上传成功')
+  // 从响应中提取文件ID
+  const fileId = response.data || response
   const newFile = {
+    id: fileId,
     fileName: file.name,
     fileSize: file.size,
-    uploadTime: new Date().toLocaleString(),
-    url: response.url
+    uploadTime: new Date().toLocaleString()
   }
   fileList.value.unshift(newFile)
 }
@@ -117,9 +140,9 @@ const handleUploadError = () => {
 }
 
 const beforeUpload = (file) => {
-  const maxSize = 100 * 1024 * 1024 // 100MB
+  const maxSize = 200 * 1024 * 1024 // 200MB
   if (file.size > maxSize) {
-    message.error('文件大小不能超过100MB')
+    message.error('文件大小不能超过200MB')
     return false
   }
   return true
@@ -136,7 +159,7 @@ const formatFileSize = (bytes) => {
 const downloadFile = async (file) => {
   try {
     const response = await axios({
-      url: file.url,
+      url: `/api/files/${file.id}`,
       method: 'GET',
       responseType: 'blob'
     })
@@ -160,8 +183,8 @@ const confirmDelete = (file) => {
     cancelText: '取消',
     async onOk() {
       try {
-        await axios.delete(`/api/files/${file.fileName}`)
-        fileList.value = fileList.value.filter(item => item.fileName !== file.fileName)
+        await axios.delete(`/api/files/${file.id}`)
+        fileList.value = fileList.value.filter(item => item.id !== file.id)
         message.success('文件删除成功')
       } catch (error) {
         message.error('文件删除失败')
@@ -179,6 +202,14 @@ const confirmDelete = (file) => {
 .upload-card {
   margin-bottom: 24px;
   background: #fafafa;
+}
+
+:deep(.upload-error .ant-upload-list-item-progress .ant-progress-bg) {
+  background-color: #ff4d4f !important;
+}
+
+:deep(.ant-upload-list-item-error .ant-progress-bg) {
+  background-color: #ff4d4f !important;
 }
 
 .file-list-card {
@@ -202,13 +233,7 @@ const confirmDelete = (file) => {
   padding: 48px;
 }
 
-:deep(.upload-error .ant-upload-list-item-progress .ant-progress-bg) {
-  background-color: #ff4d4f !important;
-}
 
-:deep(.ant-upload-list-item-error .ant-upload-list-item-progress .ant-progress-bg) {
-  background-color: #ff4d4f !important;
-}
 
 .ant-upload-drag-icon {
   font-size: 48px;
