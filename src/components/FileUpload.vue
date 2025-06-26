@@ -8,6 +8,7 @@
         @success="handleUploadSuccess"
         @error="handleUploadError"
         :before-upload="beforeUpload"
+        :class="{ 'upload-error': uploadStatus === 'error' }"
       >
         <p class="ant-upload-drag-icon">
           <inbox-outlined />
@@ -69,6 +70,7 @@ import { message, Modal } from 'ant-design-vue'
 import axios from 'axios'
 
 const fileList = ref([])
+const uploadStatus = ref('normal')
 
 const columns = [
   {
@@ -98,6 +100,7 @@ const columns = [
 ]
 
 const handleUploadSuccess = (response, file) => {
+  uploadStatus.value = 'success'
   message.success('文件上传成功')
   const newFile = {
     fileName: file.name,
@@ -109,6 +112,7 @@ const handleUploadSuccess = (response, file) => {
 }
 
 const handleUploadError = () => {
+  uploadStatus.value = 'error'
   message.error('文件上传失败')
 }
 
@@ -196,6 +200,14 @@ const confirmDelete = (file) => {
 
 :deep(.ant-upload-drag) {
   padding: 48px;
+}
+
+:deep(.upload-error .ant-upload-list-item-progress .ant-progress-bg) {
+  background-color: #ff4d4f !important;
+}
+
+:deep(.ant-upload-list-item-error .ant-upload-list-item-progress .ant-progress-bg) {
+  background-color: #ff4d4f !important;
 }
 
 .ant-upload-drag-icon {
