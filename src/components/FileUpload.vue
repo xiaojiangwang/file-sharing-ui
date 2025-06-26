@@ -9,7 +9,7 @@
         @error="handleUploadError"
         :before-upload="beforeUpload"
         :class="{ 'upload-error': uploadStatus === 'error' }"
-        :showUploadList="{ showRemoveIcon: true, showDownloadIcon: false }"
+        :showUploadList="{ showRemoveIcon: true, showDownloadIcon: false, showProgress: false }"
       >
         <p class="ant-upload-drag-icon">
           <inbox-outlined />
@@ -124,7 +124,7 @@ const handleUploadSuccess = (response, file) => {
   uploadStatus.value = 'success'
   message.success('文件上传成功')
   // 从响应中提取文件ID
-  const fileId = response.data || response
+  const fileId = response.split('/').pop()
   const newFile = {
     id: fileId,
     fileName: file.name,
