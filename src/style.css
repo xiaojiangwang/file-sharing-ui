@@ -1,0 +1,43 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  width: 100%;
+  min-height: 100vh;
+  background: #f0f2f5;
+}
+
+#app {
+  width: 100%;
+  min-height: 100vh;
+}
+
+.ant-layout {
+  min-height: 100vh;
+}
+
+.ant-layout-header {
+  width: 100% !important;
+  padding: 0 50px !important;
+}
+
+.ant-layout-content {
+  width: 100%;
+  padding: 24px 50px;
+}
+
+.ant-layout-footer {
+  padding: 24px 50px !important;
+}
+
+@media (max-width: 768px) {
+  .ant-layout-header,
+  .ant-layout-content,
+  .ant-layout-footer {
+    padding-left: 24px !important;
+    padding-right: 24px !important;
+  }
+}

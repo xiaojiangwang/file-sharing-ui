@@ -1,0 +1,218 @@
+<template>
+  <div class="file-upload-container">
+    <a-card class="upload-card" :bordered="false">
+      <a-upload-dragger
+        name="file"
+        action="/api/upload"
+        :multiple="true"
+        @success="handleUploadSuccess"
+        @error="handleUploadError"
+        :before-upload="beforeUpload"
+      >
+        <p class="ant-upload-drag-icon">
+          <inbox-outlined />
+        </p>
+        <p class="ant-upload-text">点击或拖拽文件到此区域上传</p>
+        <p class="ant-upload-hint">
+          支持单个或批量上传，单个文件大小不超过100MB
+        </p>
+      </a-upload-dragger>
+    </a-card>
+
+    <a-card v-if="fileList.length > 0" class="file-list-card" :bordered="false">
+      <template #title>
+        <span class="card-title">
+          <folder-outlined /> 已上传文件
+        </span>
+      </template>
+      <a-table
+        :columns="columns"
+        :data-source="fileList"
+        :pagination="{ pageSize: 10 }"
+        :row-key="record => record.fileName"
+      >
+        <template #bodyCell="{ column, record }">
+          <template v-if="column.key === 'fileName'">
+            <file-outlined /> {{ record.fileName }}
+          </template>
+          <template v-if="column.key === 'fileSize'">
+            {{ formatFileSize(record.fileSize) }}
+          </template>
+          <template v-if="column.key === 'action'">
+            <a-space>
+              <a-button type="link" @click="downloadFile(record)">
+                <template #icon><download-outlined /></template>
+                下载
+              </a-button>
+              <a-button type="link" danger @click="confirmDelete(record)">
+                <template #icon><delete-outlined /></template>
+                删除
+              </a-button>
+            </a-space>
+          </template>
+        </template>
+      </a-table>
+    </a-card>
+  </div>
+</template>
+
+<script setup>
+import { ref } from 'vue'
+import {
+  InboxOutlined,
+  FolderOutlined,
+  FileOutlined,
+  DownloadOutlined,
+  DeleteOutlined
+} from '@ant-design/icons-vue'
+import { message, Modal } from 'ant-design-vue'
+import axios from 'axios'
+
+const fileList = ref([])
+
+const columns = [
+  {
+    title: '文件名',
+    dataIndex: 'fileName',
+    key: 'fileName',
+    ellipsis: true
+  },
+  {
+    title: '大小',
+    dataIndex: 'fileSize',
+    key: 'fileSize',
+    width: 120
+  },
+  {
+    title: '上传时间',
+    dataIndex: 'uploadTime',
+    key: 'uploadTime',
+    width: 180
+  },
+  {
+    title: '操作',
+    key: 'action',
+    width: 180,
+    align: 'center'
+  }
+]
+
+const handleUploadSuccess = (response, file) => {
+  message.success('文件上传成功')
+  const newFile = {
+    fileName: file.name,
+    fileSize: file.size,
+    uploadTime: new Date().toLocaleString(),
+    url: response.url
+  }
+  fileList.value.unshift(newFile)
+}
+
+const handleUploadError = () => {
+  message.error('文件上传失败')
+}
+
+const beforeUpload = (file) => {
+  const maxSize = 100 * 1024 * 1024 // 100MB
+  if (file.size > maxSize) {
+    message.error('文件大小不能超过100MB')
+    return false
+  }
+  return true
+}
+
+const formatFileSize = (bytes) => {
+  if (bytes === 0) return '0 B'
+  const k = 1024
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return (bytes / Math.pow(k, i)).toFixed(2) + ' ' + sizes[i]
+}
+
+const downloadFile = async (file) => {
+  try {
+    const response = await axios({
+      url: file.url,
+      method: 'GET',
+      responseType: 'blob'
+    })
+    const url = window.URL.createObjectURL(new Blob([response.data]))
+    const link = document.createElement('a')
+    link.href = url
+    link.setAttribute('download', file.fileName)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  } catch (error) {
+    message.error('文件下载失败')
+  }
+}
+
+const confirmDelete = (file) => {
+  Modal.confirm({
+    title: '确认删除',
+    content: `确定要删除文件 ${file.fileName} 吗？`,
+    okText: '确认',
+    cancelText: '取消',
+    async onOk() {
+      try {
+        await axios.delete(`/api/files/${file.fileName}`)
+        fileList.value = fileList.value.filter(item => item.fileName !== file.fileName)
+        message.success('文件删除成功')
+      } catch (error) {
+        message.error('文件删除失败')
+      }
+    }
+  })
+}
+</script>
+
+<style scoped>
+.file-upload-container {
+  width: 100%;
+}
+
+.upload-card {
+  margin-bottom: 24px;
+  background: #fafafa;
+}
+
+.file-list-card {
+  background: #fff;
+}
+
+:deep(.ant-table-row) {
+  height: 60px;
+}
+
+:deep(.ant-table-cell) {
+  border: 1px solid #f0f0f0;
+}
+
+.card-title {
+  font-size: 16px;
+  font-weight: 500;
+}
+
+:deep(.ant-upload-drag) {
+  padding: 48px;
+}
+
+.ant-upload-drag-icon {
+  font-size: 48px;
+  color: #40a9ff;
+}
+
+.ant-upload-text {
+  font-size: 16px;
+  margin: 16px 0;
+}
+
+.ant-upload-hint {
+  color: rgba(0, 0, 0, 0.45);
+}
+
+:deep(.ant-table-pagination) {
+  margin-bottom: 0 !important;
+}
+</style>
