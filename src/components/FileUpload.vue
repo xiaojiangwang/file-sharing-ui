@@ -1,122 +1,140 @@
 <template>
   <div class="file-upload-container">
-    <!-- 文件上传卡片 -->
-    <a-card class="upload-card" :bordered="false">
-      <a-upload-dragger
-        name="file"
-        action="/api/files/upload"
-        :multiple="true"
-        @success="handleUploadSuccess"
-        @error="handleUploadError"
-        :before-upload="beforeUpload"
-        :class="{ 'upload-error': uploadStatus === 'error' }"
-        :showUploadList="false"
-      >
-        <p class="ant-upload-drag-icon">
-          <inbox-outlined />
-        </p>
-        <p class="ant-upload-text">点击或拖拽文件到此区域上传</p>
-        <p class="ant-upload-hint">
-          支持单个或批量上传，单个文件大小不超过100MB
-        </p>
-      </a-upload-dragger>
-    </a-card>
+    <a-tabs v-model:activeKey="activeTab">
+      <!-- 文件上传标签页 -->
+      <a-tab-pane key="file">
+        <template #tab>
+          <span>
+            <folder-outlined />
+            文件上传
+          </span>
+        </template>
+        <!-- 文件上传卡片 -->
+        <a-card class="upload-card" :bordered="false">
+          <a-upload-dragger
+            name="file"
+            action="/api/files/upload"
+            :multiple="true"
+            @success="handleUploadSuccess"
+            @error="handleUploadError"
+            :before-upload="beforeUpload"
+            :class="{ 'upload-error': uploadStatus === 'error' }"
+            :showUploadList="false"
+          >
+            <p class="ant-upload-drag-icon">
+              <inbox-outlined />
+            </p>
+            <p class="ant-upload-text">点击或拖拽文件到此区域上传</p>
+            <p class="ant-upload-hint">
+              支持单个或批量上传，单个文件大小不超过100MB
+            </p>
+          </a-upload-dragger>
+        </a-card>
 
-    <!-- 文本上传卡片 -->
-    <a-card class="text-upload-card" :bordered="false">
-      <template #title>
-        <span class="card-title">
-          <form-outlined /> 文本上传
-        </span>
-      </template>
-      <a-textarea
-        v-model:value="textContent"
-        placeholder="请输入要上传的文本内容"
-        :rows="4"
-        :maxLength="1000"
-        show-count
-      />
-      <div class="text-upload-actions">
-        <a-button type="primary" @click="uploadText" :loading="textUploading">
-          <template #icon><upload-outlined /></template>
-          上传文本
-        </a-button>
-      </div>
-    </a-card>
-
-    <!-- 文件列表卡片 -->
-    <!-- 文本列表卡片 -->
-    <a-card v-if="textList.length > 0" class="text-list-card" :bordered="false">
-      <template #title>
-        <span class="card-title">
-          <form-outlined /> 已上传文本
-        </span>
-      </template>
-      <a-list
-        :data-source="textList"
-        :pagination="{ pageSize: 5 }"
-      >
-        <template #renderItem="{ item }">
-          <a-list-item>
-            <template #actions>
-              <a-space>
-                <a-button type="link" @click="copyText(item)">
-                  <template #icon><copy-outlined /></template>
-                  复制
-                </a-button>
-                <a-button type="link" danger @click="confirmDeleteText(item)">
-                  <template #icon><delete-outlined /></template>
-                  删除
-                </a-button>
-              </a-space>
-            </template>
-            <a-list-item-meta>
-              <template #description>
-                <span>上传时间：{{ item.uploadTime }}</span>
+        <!-- 文件列表卡片 -->
+        <a-card v-if="fileList.length > 0" class="file-list-card" :bordered="false">
+          <template #title>
+            <span class="card-title">
+              <folder-outlined /> 已上传文件
+            </span>
+          </template>
+          <a-table
+            :columns="columns"
+            :data-source="fileList"
+            :pagination="{ pageSize: 10 }"
+            :row-key="record => record.fileName"
+          >
+            <template #bodyCell="{ column, record }">
+              <template v-if="column.key === 'fileName'">
+                <file-outlined /> {{ record.fileName }}
               </template>
-            </a-list-item-meta>
-            <div class="text-content">{{ item.content }}</div>
-          </a-list-item>
-        </template>
-      </a-list>
-    </a-card>
+              <template v-if="column.key === 'fileSize'">
+                {{ formatFileSize(record.fileSize) }}
+              </template>
+              <template v-if="column.key === 'action'">
+                <a-space>
+                  <a-button type="link" @click="downloadFile(record)">
+                    <template #icon><download-outlined /></template>
+                    下载
+                  </a-button>
+                  <a-button type="link" danger @click="confirmDelete(record)">
+                    <template #icon><delete-outlined /></template>
+                    删除
+                  </a-button>
+                </a-space>
+              </template>
+            </template>
+          </a-table>
+        </a-card>
+      </a-tab-pane>
 
-    <!-- 文件列表卡片 -->
-    <a-card v-if="fileList.length > 0" class="file-list-card" :bordered="false">
-      <template #title>
-        <span class="card-title">
-          <folder-outlined /> 已上传文件
-        </span>
-      </template>
-      <a-table
-        :columns="columns"
-        :data-source="fileList"
-        :pagination="{ pageSize: 10 }"
-        :row-key="record => record.fileName"
-      >
-
-        <template #bodyCell="{ column, record }">
-          <template v-if="column.key === 'fileName'">
-            <file-outlined /> {{ record.fileName }}
-          </template>
-          <template v-if="column.key === 'fileSize'">
-            {{ formatFileSize(record.fileSize) }}
-          </template>
-          <template v-if="column.key === 'action'">
-            <a-space>
-              <a-button type="link" @click="downloadFile(record)">
-                <template #icon><download-outlined /></template>
-                下载
-              </a-button>
-              <a-button type="link" danger @click="confirmDelete(record)">
-                <template #icon><delete-outlined /></template>
-                删除
-              </a-button>
-            </a-space>
-          </template>
+      <!-- 文本上传标签页 -->
+      <a-tab-pane key="text">
+        <template #tab>
+          <span>
+            <form-outlined />
+            文本上传
+          </span>
         </template>
-      </a-table>
-    </a-card>
+        <!-- 文本上传卡片 -->
+        <a-card class="text-upload-card" :bordered="false">
+          <template #title>
+            <span class="card-title">
+              <form-outlined /> 文本上传
+            </span>
+          </template>
+          <a-textarea
+            v-model:value="textContent"
+            placeholder="请输入要上传的文本内容"
+            :rows="4"
+            :maxLength="1000"
+            show-count
+          />
+          <div class="text-upload-actions">
+            <a-button type="primary" @click="uploadText" :loading="textUploading">
+              <template #icon><upload-outlined /></template>
+              上传文本
+            </a-button>
+          </div>
+        </a-card>
+
+        <!-- 文本列表卡片 -->
+        <a-card v-if="textList.length > 0" class="text-list-card" :bordered="false">
+          <template #title>
+            <span class="card-title">
+              <form-outlined /> 已上传文本
+            </span>
+          </template>
+          <a-list
+            :data-source="textList"
+            :pagination="{ pageSize: 5 }"
+          >
+            <template #renderItem="{ item }">
+              <a-list-item>
+                <template #actions>
+                  <a-space>
+                    <a-button type="link" @click="copyText(item)">
+                      <template #icon><copy-outlined /></template>
+                      复制
+                    </a-button>
+                    <a-button type="link" danger @click="confirmDeleteText(item)">
+                      <template #icon><delete-outlined /></template>
+                      删除
+                    </a-button>
+                  </a-space>
+                </template>
+                <a-list-item-meta>
+                  <template #description>
+                    <span>上传时间：{{ item.uploadTime }}</span>
+                  </template>
+                </a-list-item-meta>
+                <div class="text-content">{{ item.content }}</div>
+              </a-list-item>
+            </template>
+          </a-list>
+        </a-card>
+      </a-tab-pane>
+    </a-tabs>
   </div>
 </template>
 
@@ -156,6 +174,7 @@ import {
 import { message, Modal } from 'ant-design-vue'
 import axios from 'axios'
 
+const activeTab = ref('file')
 const fileList = ref([])
 const textList = ref([])
 const uploadStatus = ref('normal')
