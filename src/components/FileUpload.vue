@@ -28,6 +28,10 @@
               支持单个或批量上传，单个文件大小不超过100MB
             </p>
           </a-upload-dragger>
+          <!-- 上传进度条 -->
+          <div v-if="uploadProgress > 0 && uploadProgress < 100" class="upload-progress">
+            <a-progress :percent="uploadProgress" :show-info="false" status="active" size="small" />
+          </div>
         </a-card>
 
         <!-- 文件列表卡片 -->
@@ -40,8 +44,9 @@
           <a-table
             :columns="columns"
             :data-source="fileList"
-            :pagination="{ pageSize: 10 }"
+            :pagination="{ pageSize: 5 }"
             :row-key="record => record.fileName"
+            size="small"
           >
             <template #bodyCell="{ column, record }">
               <template v-if="column.key === 'fileName'">
@@ -107,8 +112,9 @@
           <a-table
             :columns="textColumns"
             :data-source="textList"
-            :pagination="{ pageSize: 10 }"
+            :pagination="{ pageSize: 5 }"
             :row-key="record => record.id"
+            size="small"
           >
             <template #bodyCell="{ column, record }">
               <template v-if="column.key === 'content'">
@@ -272,16 +278,30 @@ const beforeUpload = (file) => {
   return true
 }
 
+const uploadProgress = ref(0)
+
 const customRequest = async ({ file, onSuccess, onError }) => {
   const formData = new FormData()
   formData.append('file', file)
+  uploadProgress.value = 0
+
   try {
-    const response = await axios.post('/api/files/upload', formData)
+    const response = await axios.post('/api/files/upload', formData, {
+      onUploadProgress: (progressEvent) => {
+        if (progressEvent.total) {
+          uploadProgress.value = Math.round((progressEvent.loaded * 100) / progressEvent.total)
+        }
+      }
+    })
     onSuccess()
     handleUploadSuccess(response.data)
+    setTimeout(() => {
+      uploadProgress.value = 0
+    }, 1000)
   } catch (error) {
     onError()
     handleUploadError()
+    uploadProgress.value = 0
   }
 }
 
@@ -413,9 +433,9 @@ const confirmDeleteText = (text) => {
   background: #fff;
 }
 
-:deep(.ant-table-row) {
+/* :deep(.ant-table-row) {
   height: 60px;
-}
+} */
 
 :deep(.ant-table-cell) {
   border: 1px solid #f0f0f0;
@@ -455,26 +475,9 @@ const confirmDeleteText = (text) => {
   max-height: 100px;
   overflow-y: auto;
 }
+
+.upload-progress {
+  margin-top: 16px;
+}
 </style>
 
-// 文本列表的列配置
-const textColumns = [
-  {
-    title: '文本内容',
-    dataIndex: 'content',
-    key: 'content',
-    ellipsis: true
-  },
-  {
-    title: '上传时间',
-    dataIndex: 'uploadTime',
-    key: 'uploadTime',
-    width: 180
-  },
-  {
-    title: '操作',
-    key: 'action',
-    width: 180,
-    align: 'center'
-  }
-]
