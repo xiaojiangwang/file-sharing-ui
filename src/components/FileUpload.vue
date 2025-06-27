@@ -104,33 +104,30 @@
               <form-outlined /> 已上传文本
             </span>
           </template>
-          <a-list
+          <a-table
+            :columns="textColumns"
             :data-source="textList"
-            :pagination="{ pageSize: 5 }"
+            :pagination="{ pageSize: 10 }"
+            :row-key="record => record.id"
           >
-            <template #renderItem="{ item }">
-              <a-list-item>
-                <template #actions>
-                  <a-space>
-                    <a-button type="link" @click="copyText(item)">
-                      <template #icon><copy-outlined /></template>
-                      复制
-                    </a-button>
-                    <a-button type="link" danger @click="confirmDeleteText(item)">
-                      <template #icon><delete-outlined /></template>
-                      删除
-                    </a-button>
-                  </a-space>
-                </template>
-                <a-list-item-meta>
-                  <template #description>
-                    <span>上传时间：{{ item.uploadTime }}</span>
-                  </template>
-                </a-list-item-meta>
-                <div class="text-content">{{ item.content }}</div>
-              </a-list-item>
+            <template #bodyCell="{ column, record }">
+              <template v-if="column.key === 'content'">
+                <div class="text-content">{{ record.content }}</div>
+              </template>
+              <template v-if="column.key === 'action'">
+                <a-space>
+                  <a-button type="link" @click="copyText(record)">
+                    <template #icon><copy-outlined /></template>
+                    复制
+                  </a-button>
+                  <a-button type="link" danger @click="confirmDeleteText(record)">
+                    <template #icon><delete-outlined /></template>
+                    删除
+                  </a-button>
+                </a-space>
+              </template>
             </template>
-          </a-list>
+          </a-table>
         </a-card>
       </a-tab-pane>
     </a-tabs>
@@ -208,6 +205,28 @@ const columns = [
     dataIndex: 'fileSize',
     key: 'fileSize',
     width: 120
+  },
+  {
+    title: '上传时间',
+    dataIndex: 'uploadTime',
+    key: 'uploadTime',
+    width: 180
+  },
+  {
+    title: '操作',
+    key: 'action',
+    width: 180,
+    align: 'center'
+  }
+]
+
+// 文本列表的列配置
+const textColumns = [
+  {
+    title: '文本内容',
+    dataIndex: 'content',
+    key: 'content',
+    ellipsis: true
   },
   {
     title: '上传时间',
@@ -437,3 +456,25 @@ const confirmDeleteText = (text) => {
   overflow-y: auto;
 }
 </style>
+
+// 文本列表的列配置
+const textColumns = [
+  {
+    title: '文本内容',
+    dataIndex: 'content',
+    key: 'content',
+    ellipsis: true
+  },
+  {
+    title: '上传时间',
+    dataIndex: 'uploadTime',
+    key: 'uploadTime',
+    width: 180
+  },
+  {
+    title: '操作',
+    key: 'action',
+    width: 180,
+    align: 'center'
+  }
+]
