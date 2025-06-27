@@ -15,8 +15,7 @@
             name="file"
             action="/api/files/upload"
             :multiple="true"
-            @success="handleUploadSuccess"
-            @error="handleUploadError"
+            :customRequest="customRequest"
             :before-upload="beforeUpload"
             :class="{ 'upload-error': uploadStatus === 'error' }"
             :showUploadList="false"
@@ -140,27 +139,6 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-
-// 获取文件列表
-const fetchFileList = async () => {
-  try {
-    const response = await axios.get('/api/files')
-    fileList.value = response.data.map(file => ({
-      id: file.url.split('/').pop(), // 从URL中提取文件ID
-      fileName: file.fileName,
-      fileSize: file.size,
-      uploadTime: new Date().toLocaleString() // 使用当前时间作为默认值
-    }))
-  } catch (error) {
-    message.error('获取文件列表失败')
-  }
-}
-
-// 组件挂载时获取文件列表
-onMounted(() => {
-  fetchFileList()
-  fetchTextList()
-})
 import {
   InboxOutlined,
   FolderOutlined,
@@ -181,6 +159,22 @@ const uploadStatus = ref('normal')
 const textContent = ref('')
 const textUploading = ref(false)
 
+// 获取文件列表
+const fetchFileList = async () => {
+  try {
+    const response = await axios.get('/api/files')
+    fileList.value = response.data.map(file => ({
+      id: file.url.split('/').pop(),
+      fileName: file.fileName,
+      fileType: file.fileType,
+      fileSize: file.size,
+      uploadTime: file.createTime ? new Date(parseInt(file.createTime)).toLocaleString() : new Date().toLocaleString()
+    }))
+  } catch (error) {
+    message.error('获取文件列表失败')
+  }
+}
+
 // 获取文本列表
 const fetchTextList = async () => {
   try {
@@ -188,71 +182,19 @@ const fetchTextList = async () => {
     textList.value = response.data.map(text => ({
       id: text.id,
       content: text.content,
-      uploadTime: new Date().toLocaleString()
+      url: text.url,
+      uploadTime: text.createTime ? new Date(parseInt(text.createTime)).toLocaleString() : new Date().toLocaleString()
     }))
   } catch (error) {
     message.error('获取文本列表失败')
   }
 }
 
-// 上传文本
-const uploadText = async () => {
-  if (!textContent.value.trim()) {
-    message.warning('请输入文本内容')
-    return
-  }
-
-  textUploading.value = true
-  try {
-    const response = await axios.post('/api/texts/upload', textContent.value, {
-      headers: {
-        'Content-Type': 'text/plain'
-      }
-    })
-    
-    const newText = {
-      id: response.data.id,
-      content: response.data.content,
-      uploadTime: new Date().toLocaleString()
-    }
-    textList.value.unshift(newText)
-    textContent.value = ''
-    message.success('文本上传成功')
-  } catch (error) {
-    message.error('文本上传失败')
-  } finally {
-    textUploading.value = false
-  }
-}
-
-// 复制文本
-const copyText = async (text) => {
-  try {
-    await navigator.clipboard.writeText(text.content)
-    message.success('文本已复制到剪贴板')
-  } catch (error) {
-    message.error('复制失败')
-  }
-}
-
-// 删除文本
-const confirmDeleteText = (text) => {
-  Modal.confirm({
-    title: '确认删除',
-    content: '确定要删除这条文本吗？',
-    okText: '确认',
-    cancelText: '取消',
-    async onOk() {
-      try {
-        await axios.delete(`/api/texts/${text.id}`)
-        textList.value = textList.value.filter(item => item.id !== text.id)
-        message.success('文本删除成功')
-      } catch (error) {
-        message.error('文本删除失败')
-      }
-    }
-  })
-}
+// 组件挂载时获取列表
+onMounted(() => {
+  fetchFileList()
+  fetchTextList()
+})
 
 const columns = [
   {
@@ -281,19 +223,17 @@ const columns = [
   }
 ]
 
-const handleUploadSuccess = (response, file) => {
+const handleUploadSuccess = (response) => {
   uploadStatus.value = 'success'
   message.success('文件上传成功')
-  // 从响应中提取文件ID
-  const fileId = response.split('/').pop()
   const newFile = {
-    id: fileId,
-    fileName: file.name,
-    fileSize: file.size,
-    uploadTime: new Date().toLocaleString()
+    id: response.url.split('/').pop(),
+    fileName: response.fileName,
+    fileType: response.fileType,
+    fileSize: response.size,
+    uploadTime: response.createTime ? new Date(parseInt(response.createTime)).toLocaleString() : new Date().toLocaleString()
   }
   fileList.value.unshift(newFile)
-  // 重置上传状态
   setTimeout(() => {
     uploadStatus.value = 'normal'
   }, 1000)
@@ -305,12 +245,25 @@ const handleUploadError = () => {
 }
 
 const beforeUpload = (file) => {
-  const maxSize = 200 * 1024 * 1024 // 200MB
+  const maxSize = 100 * 1024 * 1024 // 100MB
   if (file.size > maxSize) {
-    message.error('文件大小不能超过200MB')
+    message.error('文件大小不能超过100MB')
     return false
   }
   return true
+}
+
+const customRequest = async ({ file, onSuccess, onError }) => {
+  const formData = new FormData()
+  formData.append('file', file)
+  try {
+    const response = await axios.post('/api/files/upload', formData)
+    onSuccess()
+    handleUploadSuccess(response.data)
+  } catch (error) {
+    onError()
+    handleUploadError()
+  }
 }
 
 const formatFileSize = (bytes) => {
@@ -353,6 +306,65 @@ const confirmDelete = (file) => {
         message.success('文件删除成功')
       } catch (error) {
         message.error('文件删除失败')
+      }
+    }
+  })
+}
+
+const uploadText = async () => {
+  if (!textContent.value.trim()) {
+    message.warning('请输入文本内容')
+    return
+  }
+
+  textUploading.value = true
+  try {
+    const response = await axios.post('/api/texts/upload', textContent.value, {
+      headers: {
+        'Content-Type': 'text/plain'
+      }
+    })
+    
+    const newText = {
+      id: response.data.id,
+      content: response.data.content,
+      url: response.data.url,
+      uploadTime: response.data.createTime ? new Date(parseInt(response.data.createTime)).toLocaleString() : new Date().toLocaleString()
+    }
+    textList.value.unshift(newText)
+    textContent.value = ''
+    message.success('文本上传成功')
+  } catch (error) {
+    message.error('文本上传失败')
+  } finally {
+    textUploading.value = false
+  }
+}
+
+// 复制文本
+const copyText = async (text) => {
+  try {
+    await navigator.clipboard.writeText(text.content)
+    message.success('文本已复制到剪贴板')
+  } catch (error) {
+    message.error('复制失败')
+  }
+}
+
+// 删除文本
+const confirmDeleteText = (text) => {
+  Modal.confirm({
+    title: '确认删除',
+    content: '确定要删除这条文本吗？',
+    okText: '确认',
+    cancelText: '取消',
+    async onOk() {
+      try {
+        await axios.delete(`/api/texts/${text.id}`)
+        textList.value = textList.value.filter(item => item.id !== text.id)
+        message.success('文本删除成功')
+      } catch (error) {
+        message.error('文本删除失败')
       }
     }
   })
@@ -423,21 +435,5 @@ const confirmDelete = (file) => {
 .text-content {
   max-height: 100px;
   overflow-y: auto;
-  white-space: pre-wrap;
-  word-break: break-all;
-}
-
-.text-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
-.ant-upload-hint {
-  color: rgba(0, 0, 0, 0.45);
-}
-
-:deep(.ant-table-pagination) {
-  margin-bottom: 0 !important;
 }
 </style>
