@@ -1,5 +1,6 @@
 <template>
   <div class="file-upload-container">
+    <!-- 文件上传卡片 -->
     <a-card class="upload-card" :bordered="false">
       <a-upload-dragger
         name="file"
@@ -9,7 +10,7 @@
         @error="handleUploadError"
         :before-upload="beforeUpload"
         :class="{ 'upload-error': uploadStatus === 'error' }"
-        :showUploadList="{ showRemoveIcon: true, showDownloadIcon: false, showProgress: false }"
+        :showUploadList="false"
       >
         <p class="ant-upload-drag-icon">
           <inbox-outlined />
@@ -21,6 +22,66 @@
       </a-upload-dragger>
     </a-card>
 
+    <!-- 文本上传卡片 -->
+    <a-card class="text-upload-card" :bordered="false">
+      <template #title>
+        <span class="card-title">
+          <form-outlined /> 文本上传
+        </span>
+      </template>
+      <a-textarea
+        v-model:value="textContent"
+        placeholder="请输入要上传的文本内容"
+        :rows="4"
+        :maxLength="1000"
+        show-count
+      />
+      <div class="text-upload-actions">
+        <a-button type="primary" @click="uploadText" :loading="textUploading">
+          <template #icon><upload-outlined /></template>
+          上传文本
+        </a-button>
+      </div>
+    </a-card>
+
+    <!-- 文件列表卡片 -->
+    <!-- 文本列表卡片 -->
+    <a-card v-if="textList.length > 0" class="text-list-card" :bordered="false">
+      <template #title>
+        <span class="card-title">
+          <form-outlined /> 已上传文本
+        </span>
+      </template>
+      <a-list
+        :data-source="textList"
+        :pagination="{ pageSize: 5 }"
+      >
+        <template #renderItem="{ item }">
+          <a-list-item>
+            <template #actions>
+              <a-space>
+                <a-button type="link" @click="copyText(item)">
+                  <template #icon><copy-outlined /></template>
+                  复制
+                </a-button>
+                <a-button type="link" danger @click="confirmDeleteText(item)">
+                  <template #icon><delete-outlined /></template>
+                  删除
+                </a-button>
+              </a-space>
+            </template>
+            <a-list-item-meta>
+              <template #description>
+                <span>上传时间：{{ item.uploadTime }}</span>
+              </template>
+            </a-list-item-meta>
+            <div class="text-content">{{ item.content }}</div>
+          </a-list-item>
+        </template>
+      </a-list>
+    </a-card>
+
+    <!-- 文件列表卡片 -->
     <a-card v-if="fileList.length > 0" class="file-list-card" :bordered="false">
       <template #title>
         <span class="card-title">
@@ -33,6 +94,7 @@
         :pagination="{ pageSize: 10 }"
         :row-key="record => record.fileName"
       >
+
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'fileName'">
             <file-outlined /> {{ record.fileName }}
@@ -79,19 +141,99 @@ const fetchFileList = async () => {
 // 组件挂载时获取文件列表
 onMounted(() => {
   fetchFileList()
+  fetchTextList()
 })
 import {
   InboxOutlined,
   FolderOutlined,
   FileOutlined,
   DownloadOutlined,
-  DeleteOutlined
+  DeleteOutlined,
+  FormOutlined,
+  UploadOutlined,
+  CopyOutlined
 } from '@ant-design/icons-vue'
 import { message, Modal } from 'ant-design-vue'
 import axios from 'axios'
 
 const fileList = ref([])
+const textList = ref([])
 const uploadStatus = ref('normal')
+const textContent = ref('')
+const textUploading = ref(false)
+
+// 获取文本列表
+const fetchTextList = async () => {
+  try {
+    const response = await axios.get('/api/texts')
+    textList.value = response.data.map(text => ({
+      id: text.id,
+      content: text.content,
+      uploadTime: new Date().toLocaleString()
+    }))
+  } catch (error) {
+    message.error('获取文本列表失败')
+  }
+}
+
+// 上传文本
+const uploadText = async () => {
+  if (!textContent.value.trim()) {
+    message.warning('请输入文本内容')
+    return
+  }
+
+  textUploading.value = true
+  try {
+    const response = await axios.post('/api/texts/upload', textContent.value, {
+      headers: {
+        'Content-Type': 'text/plain'
+      }
+    })
+    
+    const newText = {
+      id: response.data.id,
+      content: response.data.content,
+      uploadTime: new Date().toLocaleString()
+    }
+    textList.value.unshift(newText)
+    textContent.value = ''
+    message.success('文本上传成功')
+  } catch (error) {
+    message.error('文本上传失败')
+  } finally {
+    textUploading.value = false
+  }
+}
+
+// 复制文本
+const copyText = async (text) => {
+  try {
+    await navigator.clipboard.writeText(text.content)
+    message.success('文本已复制到剪贴板')
+  } catch (error) {
+    message.error('复制失败')
+  }
+}
+
+// 删除文本
+const confirmDeleteText = (text) => {
+  Modal.confirm({
+    title: '确认删除',
+    content: '确定要删除这条文本吗？',
+    okText: '确认',
+    cancelText: '取消',
+    async onOk() {
+      try {
+        await axios.delete(`/api/texts/${text.id}`)
+        textList.value = textList.value.filter(item => item.id !== text.id)
+        message.success('文本删除成功')
+      } catch (error) {
+        message.error('文本删除失败')
+      }
+    }
+  })
+}
 
 const columns = [
   {
@@ -132,6 +274,10 @@ const handleUploadSuccess = (response, file) => {
     uploadTime: new Date().toLocaleString()
   }
   fileList.value.unshift(newFile)
+  // 重置上传状态
+  setTimeout(() => {
+    uploadStatus.value = 'normal'
+  }, 1000)
 }
 
 const handleUploadError = () => {
@@ -199,7 +345,8 @@ const confirmDelete = (file) => {
   width: 100%;
 }
 
-.upload-card {
+.upload-card,
+.text-upload-card {
   margin-bottom: 24px;
   background: #fafafa;
 }
@@ -233,8 +380,6 @@ const confirmDelete = (file) => {
   padding: 48px;
 }
 
-
-
 .ant-upload-drag-icon {
   font-size: 48px;
   color: #40a9ff;
@@ -243,6 +388,30 @@ const confirmDelete = (file) => {
 .ant-upload-text {
   font-size: 16px;
   margin: 16px 0;
+}
+
+.text-upload-actions {
+  margin-top: 16px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.text-list-card {
+  margin-top: 24px;
+  background: #fff;
+}
+
+.text-content {
+  max-height: 100px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.text-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .ant-upload-hint {
