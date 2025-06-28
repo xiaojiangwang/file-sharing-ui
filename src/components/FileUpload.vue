@@ -28,6 +28,23 @@
               支持单个或批量上传，单个文件大小不超过100MB
             </p>
           </a-upload-dragger>
+          
+          <!-- 密码输入框 -->
+          <div class="upload-options">
+            <a-input-password
+              v-model:value="filePassword"
+              placeholder="可选：设置文件密码保护"
+              :maxLength="50"
+              allow-clear
+            />
+            <a-input
+              v-model:value="fileRemark"
+              placeholder="可选：添加备注信息"
+              :maxLength="100"
+              allow-clear
+            />
+          </div>
+          
           <!-- 上传进度条 -->
           <div v-if="uploadProgress > 0 && uploadProgress < 100" class="upload-progress">
             <a-progress :percent="uploadProgress" :show-info="false" status="active" size="small" />
@@ -38,19 +55,20 @@
         <a-card v-if="fileList.length > 0" class="file-list-card" :bordered="false">
           <template #title>
             <span class="card-title">
-              <folder-outlined /> 已上传文件
+              <folder-outlined /> 已上传文件 ({{ fileList.length }})
             </span>
           </template>
           <a-table
             :columns="columns"
             :data-source="fileList"
             :pagination="{ pageSize: 5 }"
-            :row-key="record => record.fileName"
+            :row-key="record => record.id"
             size="small"
           >
             <template #bodyCell="{ column, record }">
               <template v-if="column.key === 'fileName'">
                 <file-outlined /> {{ record.fileName }}
+                <lock-outlined v-if="record.hasPassword" style="margin-left: 8px; color: #faad14;" />
               </template>
               <template v-if="column.key === 'fileSize'">
                 {{ formatFileSize(record.fileSize) }}
@@ -94,6 +112,23 @@
             :maxLength="1000"
             show-count
           />
+          
+          <!-- 密码和备注输入框 -->
+          <div class="text-upload-options">
+            <a-input-password
+              v-model:value="textPassword"
+              placeholder="可选：设置文本密码保护"
+              :maxLength="50"
+              allow-clear
+            />
+            <a-input
+              v-model:value="textRemark"
+              placeholder="可选：添加备注信息"
+              :maxLength="100"
+              allow-clear
+            />
+          </div>
+          
           <div class="text-upload-actions">
             <a-button type="primary" @click="uploadText" :loading="textUploading">
               <template #icon><upload-outlined /></template>
@@ -106,7 +141,7 @@
         <a-card v-if="textList.length > 0" class="text-list-card" :bordered="false">
           <template #title>
             <span class="card-title">
-              <form-outlined /> 已上传文本
+              <form-outlined /> 已上传文本 ({{ textList.length }})
             </span>
           </template>
           <a-table
@@ -118,7 +153,10 @@
           >
             <template #bodyCell="{ column, record }">
               <template v-if="column.key === 'content'">
-                <div class="text-content">{{ record.content }}</div>
+                <div class="text-content">
+                  {{ record.content }}
+                  <lock-outlined v-if="record.hasPassword" style="margin-left: 8px; color: #faad14;" />
+                </div>
               </template>
               <template v-if="column.key === 'action'">
                 <a-space>
@@ -137,6 +175,21 @@
         </a-card>
       </a-tab-pane>
     </a-tabs>
+    
+    <!-- 密码验证弹窗 -->
+    <a-modal
+      v-model:open="passwordModalVisible"
+      title="请输入密码"
+      @ok="handlePasswordConfirm"
+      @cancel="handlePasswordCancel"
+      :confirmLoading="passwordVerifying"
+    >
+      <a-input-password
+        v-model:value="inputPassword"
+        placeholder="请输入密码"
+        @pressEnter="handlePasswordConfirm"
+      />
+    </a-modal>
   </div>
 </template>
 
@@ -150,7 +203,8 @@ import {
   DeleteOutlined,
   FormOutlined,
   UploadOutlined,
-  CopyOutlined
+  CopyOutlined,
+  LockOutlined
 } from '@ant-design/icons-vue'
 import { message, Modal } from 'ant-design-vue'
 import axios from 'axios'
@@ -161,6 +215,17 @@ const textList = ref([])
 const uploadStatus = ref('normal')
 const textContent = ref('')
 const textUploading = ref(false)
+const uploadProgress = ref(0)
+
+// 密码相关
+const filePassword = ref('')
+const fileRemark = ref('')
+const textPassword = ref('')
+const textRemark = ref('')
+const passwordModalVisible = ref(false)
+const inputPassword = ref('')
+const passwordVerifying = ref(false)
+const currentAction = ref(null) // 当前需要密码验证的操作
 
 // 获取文件列表
 const fetchFileList = async () => {
@@ -171,7 +236,8 @@ const fetchFileList = async () => {
       fileName: file.fileName,
       fileType: file.fileType,
       fileSize: file.size,
-      uploadTime: file.createTime ? new Date(parseInt(file.createTime)).toLocaleString() : new Date().toLocaleString()
+      uploadTime: file.createTime ? new Date(parseInt(file.createTime)).toLocaleString() : new Date().toLocaleString(),
+      hasPassword: file.fileName.includes('*') // 根据文件名是否包含*判断是否有密码
     }))
   } catch (error) {
     message.error('获取文件列表失败')
@@ -186,7 +252,8 @@ const fetchTextList = async () => {
       id: text.id,
       content: text.content,
       url: text.url,
-      uploadTime: text.createTime ? new Date(parseInt(text.createTime)).toLocaleString() : new Date().toLocaleString()
+      uploadTime: text.createTime ? new Date(parseInt(text.createTime)).toLocaleString() : new Date().toLocaleString(),
+      hasPassword: text.content.includes('*') // 根据内容是否包含*判断是否有密码
     }))
   } catch (error) {
     message.error('获取文本列表失败')
@@ -256,9 +323,13 @@ const handleUploadSuccess = (response) => {
     fileName: response.fileName,
     fileType: response.fileType,
     fileSize: response.size,
-    uploadTime: response.createTime ? new Date(parseInt(response.createTime)).toLocaleString() : new Date().toLocaleString()
+    uploadTime: response.createTime ? new Date(parseInt(response.createTime)).toLocaleString() : new Date().toLocaleString(),
+    hasPassword: !!filePassword.value
   }
   fileList.value.unshift(newFile)
+  // 清空密码和备注
+  filePassword.value = ''
+  fileRemark.value = ''
   setTimeout(() => {
     uploadStatus.value = 'normal'
   }, 1000)
@@ -278,11 +349,15 @@ const beforeUpload = (file) => {
   return true
 }
 
-const uploadProgress = ref(0)
-
 const customRequest = async ({ file, onSuccess, onError }) => {
   const formData = new FormData()
   formData.append('file', file)
+  if (filePassword.value) {
+    formData.append('password', filePassword.value)
+  }
+  if (fileRemark.value) {
+    formData.append('remark', fileRemark.value)
+  }
   uploadProgress.value = 0
 
   try {
@@ -313,22 +388,42 @@ const formatFileSize = (bytes) => {
   return (bytes / Math.pow(k, i)).toFixed(2) + ' ' + sizes[i]
 }
 
+// 下载文件
 const downloadFile = async (file) => {
+  if (file.hasPassword) {
+    // 需要密码验证
+    currentAction.value = { type: 'download', data: file }
+    passwordModalVisible.value = true
+  } else {
+    // 直接下载
+    await performDownload(file)
+  }
+}
+
+// 执行下载
+const performDownload = async (file, password = '') => {
   try {
+    const url = password ? `/api/files/${file.id}?password=${encodeURIComponent(password)}` : `/api/files/${file.id}`
     const response = await axios({
-      url: `/api/files/${file.id}`,
+      url,
       method: 'GET',
       responseType: 'blob'
     })
-    const url = window.URL.createObjectURL(new Blob([response.data]))
+    const downloadUrl = window.URL.createObjectURL(new Blob([response.data]))
     const link = document.createElement('a')
-    link.href = url
+    link.href = downloadUrl
     link.setAttribute('download', file.fileName)
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
+    message.success('文件下载成功')
   } catch (error) {
-    message.error('文件下载失败')
+    if (error.response?.status === 401) {
+      message.error('密码错误')
+    } else {
+      message.error('文件下载失败')
+    }
+    throw error
   }
 }
 
@@ -358,7 +453,16 @@ const uploadText = async () => {
 
   textUploading.value = true
   try {
-    const response = await axios.post('/api/texts/upload', textContent.value, {
+    const params = new URLSearchParams()
+    if (textPassword.value) {
+      params.append('password', textPassword.value)
+    }
+    if (textRemark.value) {
+      params.append('remark', textRemark.value)
+    }
+    
+    const url = params.toString() ? `/api/texts/upload?${params.toString()}` : '/api/texts/upload'
+    const response = await axios.post(url, textContent.value, {
       headers: {
         'Content-Type': 'text/plain'
       }
@@ -368,10 +472,13 @@ const uploadText = async () => {
       id: response.data.id,
       content: response.data.content,
       url: response.data.url,
-      uploadTime: response.data.createTime ? new Date(parseInt(response.data.createTime)).toLocaleString() : new Date().toLocaleString()
+      uploadTime: response.data.createTime ? new Date(parseInt(response.data.createTime)).toLocaleString() : new Date().toLocaleString(),
+      hasPassword: !!textPassword.value
     }
     textList.value.unshift(newText)
     textContent.value = ''
+    textPassword.value = ''
+    textRemark.value = ''
     message.success('文本上传成功')
   } catch (error) {
     message.error('文本上传失败')
@@ -382,11 +489,35 @@ const uploadText = async () => {
 
 // 复制文本
 const copyText = async (text) => {
+  if (text.hasPassword) {
+    // 需要密码验证
+    currentAction.value = { type: 'copy', data: text }
+    passwordModalVisible.value = true
+  } else {
+    // 直接复制
+    await performCopy(text)
+  }
+}
+
+// 执行复制
+const performCopy = async (text, password = '') => {
   try {
-    await navigator.clipboard.writeText(text.content)
+    let content = text.content
+    if (text.hasPassword) {
+      // 获取完整内容
+      const url = `/api/texts/${text.id}?password=${encodeURIComponent(password)}`
+      const response = await axios.get(url)
+      content = response.data.content
+    }
+    await navigator.clipboard.writeText(content)
     message.success('文本已复制到剪贴板')
   } catch (error) {
-    message.error('复制失败')
+    if (error.response?.status === 401) {
+      message.error('密码错误')
+    } else {
+      message.error('复制失败')
+    }
+    throw error
   }
 }
 
@@ -408,6 +539,35 @@ const confirmDeleteText = (text) => {
     }
   })
 }
+
+// 密码验证相关
+const handlePasswordConfirm = async () => {
+  if (!inputPassword.value) {
+    message.warning('请输入密码')
+    return
+  }
+  
+  passwordVerifying.value = true
+  try {
+    if (currentAction.value.type === 'download') {
+      await performDownload(currentAction.value.data, inputPassword.value)
+    } else if (currentAction.value.type === 'copy') {
+      await performCopy(currentAction.value.data, inputPassword.value)
+    }
+    handlePasswordCancel()
+  } catch (error) {
+    // 错误已在具体方法中处理
+  } finally {
+    passwordVerifying.value = false
+  }
+}
+
+const handlePasswordCancel = () => {
+  passwordModalVisible.value = false
+  inputPassword.value = ''
+  currentAction.value = null
+  passwordVerifying.value = false
+}
 </script>
 
 <style scoped>
@@ -421,6 +581,18 @@ const confirmDeleteText = (text) => {
   background: #fafafa;
 }
 
+.upload-options,
+.text-upload-options {
+  margin-top: 16px;
+  display: flex;
+  gap: 12px;
+}
+
+.upload-options > *,
+.text-upload-options > * {
+  flex: 1;
+}
+
 :deep(.upload-error .ant-upload-list-item-progress .ant-progress-bg) {
   background-color: #ff4d4f !important;
 }
@@ -432,10 +604,6 @@ const confirmDeleteText = (text) => {
 .file-list-card {
   background: #fff;
 }
-
-/* :deep(.ant-table-row) {
-  height: 60px;
-} */
 
 :deep(.ant-table-cell) {
   border: 1px solid #f0f0f0;
@@ -474,6 +642,8 @@ const confirmDeleteText = (text) => {
 .text-content {
   max-height: 100px;
   overflow-y: auto;
+  display: flex;
+  align-items: center;
 }
 
 .upload-progress {
