@@ -244,7 +244,7 @@ const fetchFileList = async () => {
   try {
     const response = await axios.get('/api/files')
     fileList.value = response.data.map((file, index) => ({
-      id: index + 1, // 临时使用索引作为ID，实际应该从后端返回
+      id: file.id,
       fileName: file.fileName,
       fileType: file.fileType,
       fileSize: file.size,
