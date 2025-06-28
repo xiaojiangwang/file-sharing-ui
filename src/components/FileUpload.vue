@@ -180,6 +180,8 @@
     <a-modal
       v-model:open="passwordModalVisible"
       title="请输入密码"
+      ok-text="确认"
+      cancel-text="取消"
       @ok="handlePasswordConfirm"
       @cancel="handlePasswordCancel"
       :confirmLoading="passwordVerifying"
