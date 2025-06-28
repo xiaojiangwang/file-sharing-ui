@@ -25,7 +25,7 @@
             </p>
             <p class="ant-upload-text">点击或拖拽文件到此区域上传</p>
             <p class="ant-upload-hint">
-              支持单个或批量上传，单个文件大小不超过100MB
+              支持单个或批量上传，单个文件大小不超过{{ maxFileSize }}MB
             </p>
           </a-upload-dragger>
           
@@ -68,7 +68,7 @@
             <template #bodyCell="{ column, record }">
               <template v-if="column.key === 'fileName'">
                 <file-outlined /> {{ record.fileName }}
-                <lock-outlined v-if="record.hasPassword" style="margin-left: 8px; color: #faad14;" />
+                <lock-outlined v-if="record.passwordProtected" style="margin-left: 8px; color: #faad14;" />
               </template>
               <template v-if="column.key === 'fileSize'">
                 {{ formatFileSize(record.fileSize) }}
@@ -155,7 +155,7 @@
               <template v-if="column.key === 'content'">
                 <div class="text-content">
                   {{ record.content }}
-                  <lock-outlined v-if="record.hasPassword" style="margin-left: 8px; color: #faad14;" />
+                  <lock-outlined v-if="record.passwordProtected" style="margin-left: 8px; color: #faad14;" />
                 </div>
               </template>
               <template v-if="column.key === 'action'">
@@ -216,6 +216,7 @@ const uploadStatus = ref('normal')
 const textContent = ref('')
 const textUploading = ref(false)
 const uploadProgress = ref(0)
+const maxFileSize = ref(100) // 默认100MB，从后端动态获取
 
 // 密码相关
 const filePassword = ref('')
@@ -227,18 +228,29 @@ const inputPassword = ref('')
 const passwordVerifying = ref(false)
 const currentAction = ref(null) // 当前需要密码验证的操作
 
+// 获取文件上传配置
+const fetchUploadConfig = async () => {
+  try {
+    const response = await axios.get('/api/files/config')
+    maxFileSize.value = response.data.maxFileSize || 100
+  } catch (error) {
+    console.error('获取配置失败:', error)
+    maxFileSize.value = 100 // 使用默认值
+  }
+}
+
 // 获取文件列表
 const fetchFileList = async () => {
   try {
     const response = await axios.get('/api/files')
-    fileList.value = response.data.map(file => ({
-      id: file.url.split('/').pop(),
+    fileList.value = response.data.map((file, index) => ({
+      id: index + 1, // 临时使用索引作为ID，实际应该从后端返回
       fileName: file.fileName,
       fileType: file.fileType,
       fileSize: file.size,
-      remark: file.remark || '', // 添加备注字段
+      remark: file.remark || '',
       uploadTime: file.createTime ? new Date(parseInt(file.createTime)).toLocaleString() : new Date().toLocaleString(),
-      hasPassword: file.fileName.includes('*') // 根据文件名是否包含*判断是否有密码
+      passwordProtected: file.passwordProtected
     }))
   } catch (error) {
     message.error('获取文件列表失败')
@@ -251,19 +263,19 @@ const fetchTextList = async () => {
     const response = await axios.get('/api/texts')
     textList.value = response.data.map(text => ({
       id: text.id,
-      content: text.content, // 后端已处理密码保护的显示逻辑
-      url: text.url,
-      remark: text.remark || '', // 添加备注字段
+      content: text.content,
+      remark: text.remark || '',
       uploadTime: text.createTime ? new Date(parseInt(text.createTime)).toLocaleString() : new Date().toLocaleString(),
-      hasPassword: text.content === '******' // 根据内容是否为******判断是否有密码
+      passwordProtected: text.passwordProtected
     }))
   } catch (error) {
     message.error('获取文本列表失败')
   }
 }
 
-// 组件挂载时获取列表
+// 组件挂载时获取配置和列表
 onMounted(() => {
+  fetchUploadConfig()
   fetchFileList()
   fetchTextList()
 })
@@ -334,15 +346,8 @@ const textColumns = [
 const handleUploadSuccess = (response) => {
   uploadStatus.value = 'success'
   message.success('文件上传成功')
-  const newFile = {
-    id: response.url.split('/').pop(),
-    fileName: response.fileName,
-    fileType: response.fileType,
-    fileSize: response.size,
-    uploadTime: response.createTime ? new Date(parseInt(response.createTime)).toLocaleString() : new Date().toLocaleString(),
-    hasPassword: !!filePassword.value
-  }
-  fileList.value.unshift(newFile)
+  // 重新获取文件列表以获取正确的文件ID
+  fetchFileList()
   // 清空密码和备注
   filePassword.value = ''
   fileRemark.value = ''
@@ -351,15 +356,25 @@ const handleUploadSuccess = (response) => {
   }, 1000)
 }
 
-const handleUploadError = () => {
+const handleUploadError = (error) => {
   uploadStatus.value = 'error'
-  message.error('文件上传失败')
+  
+  // 根据后端错误类型显示不同的错误信息
+  if (error?.response?.data?.error === 'MAX_SIZE_EXCEEDED') {
+    message.error('文件大小超过系统限制')
+  } else if (error?.response?.data?.error === 'RUNTIME_ERROR') {
+    message.error(error.response.data.message || '文件大小超过限制')
+  } else if (error?.response?.data?.message) {
+    message.error(error.response.data.message)
+  } else {
+    message.error('文件上传失败，请重试')
+  }
 }
 
 const beforeUpload = (file) => {
-  const maxSize = 100 * 1024 * 1024 // 100MB
-  if (file.size > maxSize) {
-    message.error('文件大小不能超过100MB')
+  const maxSizeBytes = maxFileSize.value * 1024 * 1024
+  if (file.size > maxSizeBytes) {
+    message.error(`文件大小不能超过${maxFileSize.value}MB`)
     return false
   }
   return true
@@ -391,7 +406,7 @@ const customRequest = async ({ file, onSuccess, onError }) => {
     }, 1000)
   } catch (error) {
     onError()
-    handleUploadError()
+    handleUploadError(error)
     uploadProgress.value = 0
   }
 }
@@ -406,7 +421,7 @@ const formatFileSize = (bytes) => {
 
 // 下载文件
 const downloadFile = async (file) => {
-  if (file.hasPassword) {
+  if (file.passwordProtected) {
     // 需要密码验证
     currentAction.value = { type: 'download', data: file }
     passwordModalVisible.value = true
@@ -419,12 +434,18 @@ const downloadFile = async (file) => {
 // 执行下载
 const performDownload = async (file, password = '') => {
   try {
-    const url = password ? `/api/files/${file.id}?password=${encodeURIComponent(password)}` : `/api/files/${file.id}`
+    const params = new URLSearchParams()
+    if (password) {
+      params.append('password', password)
+    }
+    const url = `/api/files/${file.id}${params.toString() ? '?' + params.toString() : ''}`
+    
     const response = await axios({
       url,
       method: 'GET',
       responseType: 'blob'
     })
+    
     const downloadUrl = window.URL.createObjectURL(new Blob([response.data]))
     const link = document.createElement('a')
     link.href = downloadUrl
@@ -432,6 +453,7 @@ const performDownload = async (file, password = '') => {
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
+    window.URL.revokeObjectURL(downloadUrl)
     message.success('文件下载成功')
   } catch (error) {
     if (error.response?.status === 401) {
@@ -469,33 +491,20 @@ const uploadText = async () => {
 
   textUploading.value = true
   try {
-    const params = new URLSearchParams()
+    const formData = new FormData()
+    formData.append('content', textContent.value)
     if (textPassword.value) {
-      params.append('password', textPassword.value)
+      formData.append('password', textPassword.value)
     }
     if (textRemark.value) {
-      params.append('remark', textRemark.value)
+      formData.append('remark', textRemark.value)
     }
     
-    const url = params.toString() ? `/api/texts/upload?${params.toString()}` : '/api/texts/upload'
-    const response = await axios.post(url, textContent.value, {
-      headers: {
-        'Content-Type': 'text/plain'
-      }
-    })
+    const response = await axios.post('/api/texts/upload', formData)
     
-    const newText = {
-      id: response.data.id,
-      content: response.data.content,
-      url: response.data.url,
-      uploadTime: response.data.createTime ? new Date(parseInt(response.data.createTime)).toLocaleString() : new Date().toLocaleString(),
-      hasPassword: !!textPassword.value,
-      remark: textRemark.value,
-    }
-    if (newText.hasPassword) {
-      newText.content = '******'
-    }
-    textList.value.unshift(newText)
+    // 重新获取文本列表
+    await fetchTextList()
+    
     textContent.value = ''
     textPassword.value = ''
     textRemark.value = ''
@@ -509,7 +518,7 @@ const uploadText = async () => {
 
 // 复制文本
 const copyText = async (text) => {
-  if (text.hasPassword) {
+  if (text.passwordProtected) {
     // 需要密码验证
     currentAction.value = { type: 'copy', data: text }
     passwordModalVisible.value = true
@@ -523,9 +532,13 @@ const copyText = async (text) => {
 const performCopy = async (text, password = '') => {
   try {
     let content = text.content
-    if (text.hasPassword) {
+    if (text.passwordProtected) {
       // 获取完整内容
-      const url = `/api/texts/${text.id}?password=${encodeURIComponent(password)}`
+      const params = new URLSearchParams()
+      if (password) {
+        params.append('password', password)
+      }
+      const url = `/api/texts/${text.id}${params.toString() ? '?' + params.toString() : ''}`
       const response = await axios.get(url)
       content = response.data.content
     }
