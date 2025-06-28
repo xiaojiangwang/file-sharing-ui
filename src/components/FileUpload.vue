@@ -236,6 +236,7 @@ const fetchFileList = async () => {
       fileName: file.fileName,
       fileType: file.fileType,
       fileSize: file.size,
+      remark: file.remark || '', // 添加备注字段
       uploadTime: file.createTime ? new Date(parseInt(file.createTime)).toLocaleString() : new Date().toLocaleString(),
       hasPassword: file.fileName.includes('*') // 根据文件名是否包含*判断是否有密码
     }))
@@ -250,10 +251,11 @@ const fetchTextList = async () => {
     const response = await axios.get('/api/texts')
     textList.value = response.data.map(text => ({
       id: text.id,
-      content: text.content,
+      content: text.content, // 后端已处理密码保护的显示逻辑
       url: text.url,
+      remark: text.remark || '', // 添加备注字段
       uploadTime: text.createTime ? new Date(parseInt(text.createTime)).toLocaleString() : new Date().toLocaleString(),
-      hasPassword: text.content.includes('*') // 根据内容是否包含*判断是否有密码
+      hasPassword: text.content === '******' // 根据内容是否为******判断是否有密码
     }))
   } catch (error) {
     message.error('获取文本列表失败')
@@ -280,6 +282,13 @@ const columns = [
     width: 120
   },
   {
+    title: '备注',
+    dataIndex: 'remark',
+    key: 'remark',
+    width: 150,
+    ellipsis: true
+  },
+  {
     title: '上传时间',
     dataIndex: 'uploadTime',
     key: 'uploadTime',
@@ -299,6 +308,13 @@ const textColumns = [
     title: '文本内容',
     dataIndex: 'content',
     key: 'content',
+    ellipsis: true
+  },
+  {
+    title: '备注',
+    dataIndex: 'remark',
+    key: 'remark',
+    width: 150,
     ellipsis: true
   },
   {
@@ -473,7 +489,11 @@ const uploadText = async () => {
       content: response.data.content,
       url: response.data.url,
       uploadTime: response.data.createTime ? new Date(parseInt(response.data.createTime)).toLocaleString() : new Date().toLocaleString(),
-      hasPassword: !!textPassword.value
+      hasPassword: !!textPassword.value,
+      remark: textRemark.value,
+    }
+    if (newText.hasPassword) {
+      newText.content = '******'
     }
     textList.value.unshift(newText)
     textContent.value = ''
